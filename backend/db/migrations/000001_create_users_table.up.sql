@@ -1,0 +1,28 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+create or replace function uuid_v7()
+returns uuid
+as $$
+select encode(
+    set_bit(
+      set_bit(
+        overlay(uuid_send(gen_random_uuid())
+                placing substring(int8send(floor(extract(epoch from clock_timestamp()) * 1000)::bigint) from 3)
+                from 1 for 6
+        ),
+        52, 1
+      ),
+      53, 1
+    ),
+    'hex')::uuid;
+$$
+language SQL
+volatile;
+
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuid_v7(),
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    phone TEXT DEFAULT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
