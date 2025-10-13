@@ -31,7 +31,17 @@ func (c *Client) Generate(input, system string) (*string, error) {
 		SystemInstruction: genai.NewContentFromText(system, genai.RoleUser),
 	}
 
-	r, err := c.client.Models.GenerateContent(context.Background(), "gemini-2.5-flash-lite", genai.Text(input), config)
+	// expanded on how to include several messages.
+	cont := []*genai.Content{
+		{
+			Role:  genai.RoleUser,
+			Parts: []*genai.Part{{Text: input}},
+		},
+	}
+
+	genai.Text(input)
+
+	r, err := c.client.Models.GenerateContent(context.Background(), "gemini-2.5-flash", cont, config)
 
 	if err != nil {
 		return nil, err

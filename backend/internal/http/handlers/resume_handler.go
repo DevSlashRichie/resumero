@@ -17,8 +17,9 @@ func NewResumeHandler(s *resume.Service) *ResumeHandler {
 
 func (h *ResumeHandler) GenerateResume(c *gin.Context) {
 	var input struct {
-		Part    string `json:"part"`
-		Content string `jsin:"content"`
+		Part    string   `json:"part"`
+		Content string   `json:"content"`
+		History []string `json:"history"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -26,11 +27,12 @@ func (h *ResumeHandler) GenerateResume(c *gin.Context) {
 			"message": "Input validation failed!",
 			"error":   err.Error(),
 		})
+		return
 	}
 
 	switch input.Part {
 	case "experience":
-		r, err := h.service.GenerateJobsSection(input.Content)
+		r, err := h.service.GenerateJobsSection(input.Content, input.History)
 
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{

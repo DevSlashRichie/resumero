@@ -26,12 +26,103 @@ $typst.setRendererInitOptions({
     "https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-renderer/pkg/typst_ts_renderer_bg.wasm",
 });
 
+interface Education {
+  uni: string;
+  field: string;
+  location: string;
+  from: string;
+  to: string;
+}
+
+interface Experience {
+  role: string;
+  company: string;
+  location: string;
+  from: string;
+  to: string;
+  context: string;
+  descriptions: { text: string }[];
+}
+
+interface Project {
+  projectName: string;
+  organization: string;
+  from: string;
+  to: string;
+  context: string;
+  descriptions: { text: string }[];
+}
+
+interface Abilities {
+  languages: string[];
+  technologies: string[];
+}
+
 interface ResumeContent {
   fullName: string;
   email: string;
   github: string;
   linkedin: string;
   phone: string;
+  education: Education[];
+  experience: Experience[];
+  projects: Project[];
+  abilities: Abilities;
+}
+
+function createTypstContent(input: ResumeContent): string {
+  let next = template;
+  const { education, experience, projects, abilities, ...rest } = input;
+
+  Object.entries(rest).forEach(([key, value]) => {
+    next = next.replace(`%${key.toUpperCase()}%`, value as string);
+  });
+
+  const educationString = education
+    .map(
+      (edu) =>
+        `#edu(
+institution: "${edu.uni}",
+location: "${edu.location}",
+dates: dates-helper(start-date: "${edu.from}", end-date: "${edu.to}"),
+degree: "${edu.field}",
+)`,
+    )
+    .join("\n\n");
+  next = next.replace("%EDUCATION_SECTION%", educationString);
+
+  const experienceString = experience
+    .map(
+      (exp) =>
+        `#work(
+title: "${exp.role}",
+company: "${exp.company}",
+location: "${exp.location}",
+dates: dates-helper(start-date: "${exp.from}", end-date: "${exp.to}"),
+)
+${exp.descriptions.map((d) => `- ${d.text}`).join("\n")}`,
+    )
+    .join("\n\n");
+  next = next.replace("%WORK_EXPERIENCE_SECTION%", experienceString);
+
+  const projectsString = projects
+    .map(
+      (proj) =>
+        `#project(
+name: "${proj.projectName}",
+role: "${proj.organization}",
+dates: dates-helper(start-date: "${proj.from}", end-date: "${proj.to}"),
+)
+${proj.descriptions.map((d) => `- ${d.text}`).join("\n")}`,
+    )
+    .join("\n\n");
+
+  next = next.replace("%PROJECTS_SECTION%", projectsString);
+
+  next = next.replace("%LANGUAGES%", abilities.languages.join(", "));
+  next = next.replace("%TECHNOLOGIES%", abilities.technologies.join(", "));
+
+  return next;
 }
 
 function Doc(input: ResumeContent) {
@@ -63,13 +154,13 @@ function Doc(input: ResumeContent) {
   };
 
   useEffect(() => {
-    let next = template;
-    Object.entries(input).forEach(([key, value]) => {
-      next = next.replace(`%${key.toUpperCase()}%`, value);
-    });
+    const timer = setTimeout(() => {
+      const typstContent = createTypstContent(input);
+      render(typstContent);
+    }, 300);
 
-    render(next);
-  }, [ref, input]);
+    return () => clearTimeout(timer);
+  }, [input]);
 
   return (
     <>
@@ -79,9 +170,15 @@ function Doc(input: ResumeContent) {
 }
 
 function RouteComponent() {
+  const initialValuesRaw = localStorage.getItem("resume-form");
+  const initialValues = initialValuesRaw ? JSON.parse(initialValuesRaw) : {};
+
   const form = useForm({
     defaultValues: {
       contactFields: [
+        {
+          value: "",
+        },
         {
           value: "",
         },
@@ -129,9 +226,44 @@ function RouteComponent() {
         languages: [] as string[],
         technologies: [] as string[],
       },
+      ...initialValues,
     },
-    onSubmit: ({ value }) => {
-      console.log("value", value);
+    onSubmit: async ({ value }) => {
+      const resumeContent: ResumeContent = {
+        fullName: value.contactFields[0]?.value || "",
+        email: value.contactFields[1]?.value || "",
+        phone: value.contactFields[2]?.value || "",
+        linkedin: value.contactFields[3]?.value || "",
+        github: value.contactFields[4]?.value || "",
+        education: value.education,
+        experience: value.experience,
+        projects: value.projects,
+        abilities: value.abilities,
+      };
+      const typstContent = createTypstContent(resumeContent);
+
+      const pdfData = await $typst.pdf({
+        mainContent: typstContent,
+      });
+
+      const blob = new Blob([pdfData!], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "resume.pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    listeners: {
+      onChange: ({ formApi }) => {
+        localStorage.setItem(
+          "resume-form",
+          JSON.stringify(formApi.state.values),
+        );
+      },
+      onChangeDebounceMs: 300,
     },
   });
 
@@ -180,7 +312,11 @@ function RouteComponent() {
                               </Label>
                               <Input
                                 id={subfield.name}
-                                type={index === 1 ? "email" : "text"}
+                                type={
+                                  ["text", "email", "phone", "url", "url"][
+                                    index
+                                  ] || "text"
+                                }
                                 placeholder=""
                                 value={subfield.state.value}
                                 onBlur={field.handleBlur}
@@ -193,22 +329,6 @@ function RouteComponent() {
                         )}
                       </form.Field>
                     ))}
-
-                    {field.state.value.length !== 6 ? (
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          form.pushFieldValue("contactFields", {
-                            value: "",
-                          });
-                        }}
-                        variant="outline"
-                        className="w-full max-w-sm"
-                      >
-                        + Add contact detail (max{" "}
-                        {6 - form.state.values.contactFields.length} remaining)
-                      </Button>
-                    ) : null}
                   </>
                 )}
               </form.Field>
@@ -908,6 +1028,10 @@ function RouteComponent() {
                 phone={data.contactFields[2]?.value || ""}
                 linkedin={data.contactFields[3]?.value || ""}
                 github={data.contactFields[4]?.value || ""}
+                education={data.education}
+                experience={data.experience}
+                projects={data.projects}
+                abilities={data.abilities}
               />
             )}
           </form.Subscribe>
