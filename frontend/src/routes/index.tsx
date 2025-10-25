@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import template from "@/assets/template.txt?raw";
 
 import { $typst } from "@myriaddreamin/typst.ts";
+import { useApi } from "@/hooks/use-api";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
   component: RouteComponent,
@@ -169,9 +171,63 @@ function Doc(input: ResumeContent) {
   );
 }
 
+interface FormType {
+  contactFields: {
+    value: string;
+  }[];
+
+  education: {
+    uni: string;
+    field: string;
+    location: string;
+    from: string;
+    to: string;
+  }[];
+
+  experience: {
+    role: string;
+    company: string;
+    location: string;
+    from: string;
+    to: string;
+    context: string;
+    descriptions: {
+      text: string;
+    }[];
+  }[];
+
+  projects: {
+    projectName: string;
+    organization: string;
+    from: string;
+    to: string;
+    context: string;
+    descriptions: {
+      text: string;
+    }[];
+  }[];
+
+  abilities: {
+    languages: string[];
+    technologies: string[];
+  };
+}
+
 function RouteComponent() {
   const initialValuesRaw = localStorage.getItem("resume-form");
   const initialValues = initialValuesRaw ? JSON.parse(initialValuesRaw) : {};
+
+  const { api } = useApi();
+
+  const doLine = async (content: string, history: string[] = []) => {
+    return api.resume
+      .generateJobLine({
+        part: "experience",
+        content,
+        history,
+      })
+      .submit();
+  };
 
   const form = useForm({
     defaultValues: {
@@ -227,7 +283,7 @@ function RouteComponent() {
         technologies: [] as string[],
       },
       ...initialValues,
-    },
+    } as FormType,
     onSubmit: async ({ value }) => {
       const resumeContent: ResumeContent = {
         fullName: value.contactFields[0]?.value || "",
@@ -682,13 +738,35 @@ function RouteComponent() {
                                   </Button>
                                   <Button
                                     type="button"
-                                    onClick={() =>
-                                      descriptionsField.pushValue({
-                                        text: "Generated: [Describe an achievement based on the context above]",
-                                      })
-                                    }
+                                    onClick={() => {
+                                      const context =
+                                        form.state.values.experience[index]
+                                          .context;
+
+                                      if (!context) {
+                                        toast.error("invalid context.");
+                                        return;
+                                      }
+
+                                      const history =
+                                        form.state.values.experience[
+                                          index
+                                        ].descriptions.map((it) => it.text);
+
+                                      toast.promise(doLine(context, history), {
+                                        success: (r) => {
+                                          descriptionsField.pushValue({
+                                            text: r.content,
+                                          });
+
+                                          return "Ready!";
+                                        },
+                                        error: (e) => `ups! ${String(e)}`,
+                                        loading: "Loading...",
+                                      });
+                                    }}
                                   >
-                                    Generate new line
+                                    Generate new line-
                                   </Button>
                                 </div>
                               </div>
